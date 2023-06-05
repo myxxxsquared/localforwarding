@@ -9,13 +9,13 @@ import (
 )
 
 type Config struct {
-	Cidr     string `yaml:"cidr"`
-	Main     bool   `yaml:"main"`
-	Password string `yaml:"password"`
+	Cidrs    []string `yaml:"cidr"`
+	Main     bool     `yaml:"main"`
+	Password string   `yaml:"password"`
 }
 
 type Daemon struct {
-	cidr         *net.IPNet
+	cidrs        []*net.IPNet
 	main         bool
 	packets      *packagemgr.PackageMgr
 	server       *daemonServer
@@ -32,21 +32,20 @@ type serverConn struct {
 	status   comm.ConnStatus
 }
 
-type interfaceInfo struct {
-	i     *net.Interface
-	addrs []*net.IPNet
-}
-
 func NewDaemon(config *Config) (*Daemon, error) {
-	_, cidr, err := net.ParseCIDR(config.Cidr)
-	if err != nil {
-		return nil, err
+	cidrs := []*net.IPNet{}
+	for _, cidr := range config.Cidrs {
+		_, parsedCidr, err := net.ParseCIDR(cidr)
+		if err != nil {
+			return nil, err
+		}
+		cidrs = append(cidrs, parsedCidr)
 	}
 
 	password := []byte(config.Password)
 
 	return &Daemon{
-		cidr:         cidr,
+		cidrs:        cidrs,
 		main:         config.Main,
 		packets:      packagemgr.NewPackageMgr(password),
 		shuttingdown: false,
@@ -64,43 +63,6 @@ func (d *Daemon) Stop() {
 	if d.main {
 		d.stopServer()
 	}
-}
-
-func (d *Daemon) getInterfaces() ([]interfaceInfo, error) {
-	interfaces, err := net.Interfaces()
-	if err != nil {
-		log.WithError(err).Error("Error getting interfaces")
-		return nil, err
-	}
-
-	infos := []interfaceInfo{}
-
-	for _, i := range interfaces {
-		addrs, err := i.Addrs()
-		if err != nil {
-			log.WithError(err).WithField("interface", i.Name).Error("Error getting addresses")
-		}
-		matchedAddrs := []*net.IPNet{}
-		for _, a := range addrs {
-			netaddr, ok := a.(*net.IPNet)
-			if !ok {
-				log.WithField("interface", i.Name).WithField("addr", a).Error("Error casting address")
-				continue
-			}
-			if d.cidr.Contains(netaddr.IP) {
-				matchedAddrs = append(matchedAddrs, netaddr)
-			}
-		}
-
-		if len(matchedAddrs) > 0 {
-			infos = append(infos, interfaceInfo{
-				i:     &i,
-				addrs: matchedAddrs,
-			})
-		}
-	}
-
-	return infos, nil
 }
 
 func (d *Daemon) startServer() error {

@@ -8,6 +8,7 @@ import "net"
 // ServerOK S{clientip,serverip}
 // Renew R{clientip,serverip}
 // ServerOK S{clientip,serverip}
+// ServerChanged C{serverip}
 
 const (
 	MsgTypeDiscovery = iota
@@ -15,6 +16,7 @@ const (
 	MsgTypeAck
 	MsgTypeServerOK
 	MsgTypeRenew
+	MsgTypeServerChanged
 )
 
 const (
@@ -66,6 +68,11 @@ func (p *Packet) Encode() []byte {
 			return nil
 		}
 		return append(append([]byte{'R'}, p.Client...), p.Server...)
+	case MsgTypeServerChanged:
+		if len(p.Server) != 4 {
+			return nil
+		}
+		return append([]byte{'C'}, p.Server...)
 	default:
 		return nil
 	}
@@ -121,6 +128,15 @@ func Decode(b []byte) *Packet {
 				Type:   MsgTypeRenew,
 				Client: b[1:5],
 				Server: b[5:],
+			}
+		} else {
+			return nil
+		}
+	case 'C':
+		if len(b) == 5 {
+			return &Packet{
+				Type:   MsgTypeServerChanged,
+				Server: b[1:],
 			}
 		} else {
 			return nil
