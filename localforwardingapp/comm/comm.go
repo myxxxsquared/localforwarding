@@ -6,86 +6,126 @@ import "net"
 // Assign A{clientip,serverip}
 // Ack K{clientip,serverip}
 // ServerOK S{clientip,serverip}
+// Renew R{clientip,serverip}
+// ServerOK S{clientip,serverip}
 
 const (
 	MsgTypeDiscovery = iota
 	MsgTypeAssign
 	MsgTypeAck
 	MsgTypeServerOK
+	MsgTypeRenew
 )
 
+const (
+	ConnStatusNew = iota
+	ConnStatusAcked
+)
+
+type ConnStatus int
 type MsgType int
 
-func EncodePacketD(clientIP net.IP) []byte {
-	return append([]byte("D"), clientIP...)
+type Packet struct {
+	Type   MsgType
+	Client net.IP
+	Server net.IP
 }
 
-func EncodePacketA(clientIP, serverIP net.IP) []byte {
-	return append(append([]byte("A"), clientIP...), serverIP...)
+func NewPacket(t MsgType, c, s net.IP) *Packet {
+	return &Packet{
+		Type:   t,
+		Client: c,
+		Server: s,
+	}
 }
 
-func EncodePacketK(clientIP, serverIP net.IP) []byte {
-	return append(append([]byte("K"), clientIP...), serverIP...)
+func (p *Packet) Encode() []byte {
+	switch p.Type {
+	case MsgTypeDiscovery:
+		if len(p.Client) != 4 {
+			return nil
+		}
+		return append([]byte{'D'}, p.Client...)
+	case MsgTypeAssign:
+		if len(p.Client) != 4 || len(p.Server) != 4 {
+			return nil
+		}
+		return append(append([]byte{'A'}, p.Client...), p.Server...)
+	case MsgTypeAck:
+		if len(p.Client) != 4 || len(p.Server) != 4 {
+			return nil
+		}
+		return append(append([]byte{'K'}, p.Client...), p.Server...)
+	case MsgTypeServerOK:
+		if len(p.Client) != 4 || len(p.Server) != 4 {
+			return nil
+		}
+		return append(append([]byte{'S'}, p.Client...), p.Server...)
+	case MsgTypeRenew:
+		if len(p.Client) != 4 || len(p.Server) != 4 {
+			return nil
+		}
+		return append(append([]byte{'R'}, p.Client...), p.Server...)
+	default:
+		return nil
+	}
 }
 
-func EncodePacketS(clientIP, serverIP net.IP) []byte {
-	return append(append([]byte("S"), clientIP...), serverIP...)
-}
-
-func GetMsgType(b []byte) (MsgType, bool) {
+func Decode(b []byte) *Packet {
 	if len(b) < 1 {
-		return 0, false
+		return nil
 	}
 	switch b[0] {
 	case 'D':
-		return MsgTypeDiscovery, true
+		if len(b) == 5 {
+			return &Packet{
+				Type:   MsgTypeDiscovery,
+				Client: b[1:],
+			}
+		} else {
+			return nil
+		}
 	case 'A':
-		return MsgTypeAssign, true
+		if len(b) == 9 {
+			return &Packet{
+				Type:   MsgTypeAssign,
+				Client: b[1:5],
+				Server: b[5:],
+			}
+		} else {
+			return nil
+		}
 	case 'K':
-		return MsgTypeAck, true
+		if len(b) == 9 {
+			return &Packet{
+				Type:   MsgTypeAck,
+				Client: b[1:5],
+				Server: b[5:],
+			}
+		} else {
+			return nil
+		}
 	case 'S':
-		return MsgTypeServerOK, true
+		if len(b) == 9 {
+			return &Packet{
+				Type:   MsgTypeServerOK,
+				Client: b[1:5],
+				Server: b[5:],
+			}
+		} else {
+			return nil
+		}
+	case 'R':
+		if len(b) == 9 {
+			return &Packet{
+				Type:   MsgTypeRenew,
+				Client: b[1:5],
+				Server: b[5:],
+			}
+		} else {
+			return nil
+		}
 	default:
-		return 0, false
+		return nil
 	}
-}
-
-func DecodePacketD(b []byte) (net.IP, bool) {
-	if len(b) == 17 && b[0] == 'D' {
-		return b[1:], true
-	}
-	if len(b) == 5 && b[0] == 'D' {
-		return b[1:], true
-	}
-	return nil, false
-}
-
-func DecodePacketA(b []byte) (net.IP, net.IP, bool) {
-	if len(b) == 33 && b[0] == 'A' {
-		return b[1:17], b[17:], true
-	}
-	if len(b) == 9 && b[0] == 'A' {
-		return b[1:5], b[5:], true
-	}
-	return nil, nil, false
-}
-
-func DecodePacketK(b []byte) (net.IP, net.IP, bool) {
-	if len(b) == 33 && b[0] == 'K' {
-		return b[1:17], b[17:], true
-	}
-	if len(b) == 9 && b[0] == 'K' {
-		return b[1:5], b[5:], true
-	}
-	return nil, nil, false
-}
-
-func DecodePacketS(b []byte) (net.IP, net.IP, bool) {
-	if len(b) == 33 && b[0] == 'S' {
-		return b[1:17], b[17:], true
-	}
-	if len(b) == 9 && b[0] == 'S' {
-		return b[1:5], b[5:], true
-	}
-	return nil, nil, false
 }
