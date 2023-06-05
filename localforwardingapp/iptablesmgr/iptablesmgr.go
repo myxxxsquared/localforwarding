@@ -72,12 +72,10 @@ func (m *IPTablesMgr) Reset() {
 	for addrname := range m.added {
 		cmd := exec.Command("iptables", "-t", "nat", "-D", "PREROUTING", "-s", addrname, "-j", "MASQUERADE")
 
-		go func() {
-			err := cmd.Run()
-			if err != nil {
-				log.WithError(err).Error("Error removing iptables rule")
-			}
-		}()
+		err := cmd.Run()
+		if err != nil {
+			log.WithError(err).WithField("addrname", addrname).Error("Error resetting iptables rule")
+		}
 	}
 }
 
