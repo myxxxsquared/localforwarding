@@ -9,13 +9,15 @@ import (
 )
 
 type IPTablesMgr struct {
-	lock  sync.Mutex
-	added map[string]bool
+	lock         sync.Mutex
+	added        map[string]struct{}
+	shuttingdown bool
 }
 
 func NewIPTablesMgr() *IPTablesMgr {
 	return &IPTablesMgr{
-		added: map[string]bool{},
+		added:        make(map[string]struct{}),
+		shuttingdown: false,
 	}
 }
 
@@ -23,9 +25,13 @@ func (m *IPTablesMgr) Add(addr net.IP) {
 	m.lock.Lock()
 	defer m.lock.Unlock()
 
+	if m.shuttingdown {
+		return
+	}
+
 	addrname := addr.String()
 
-	if m.added[addrname] {
+	if _, ok := m.added[addrname]; ok {
 		return
 	}
 
@@ -45,7 +51,7 @@ func (m *IPTablesMgr) Remove(addr net.IP) {
 
 	addrname := addr.String()
 
-	if !m.added[addrname] {
+	if _, ok := m.added[addrname]; !ok {
 		return
 	}
 
@@ -73,4 +79,11 @@ func (m *IPTablesMgr) Reset() {
 			}
 		}()
 	}
+}
+
+func (m *IPTablesMgr) SetShutdown() {
+	m.lock.Lock()
+	defer m.lock.Unlock()
+
+	m.shuttingdown = true
 }

@@ -289,10 +289,24 @@ func (d *Daemon) handleRenew(addr *net.UDPAddr, packet *comm.Packet) {
 }
 
 func (d *Daemon) stopServer() {
+	d.shuttingdown = true
 	if d.server != nil && d.server.listener != nil {
 		d.server.listener.Close()
 	}
 	if d.server != nil && d.server.iptables != nil {
+		d.server.iptables.SetShutdown()
 		d.server.iptables.Reset()
 	}
+}
+
+func (d *Daemon) runClient() {
+
+}
+
+func (d *Daemon) startClient() {
+	go d.runClient()
+}
+
+func (d *Daemon) stopClient() {
+	d.shuttingdown = true
 }
