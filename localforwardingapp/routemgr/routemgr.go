@@ -9,8 +9,9 @@ import (
 )
 
 type RouteMgr struct {
-	lock sync.Mutex
-	set  bool
+	lock         sync.Mutex
+	set          bool
+	shuttingdown bool
 
 	gwRoute        *netlink.Route
 	gwRouteNew     *netlink.Route
@@ -21,6 +22,14 @@ type RouteMgr struct {
 
 func NewRouteMgr() *RouteMgr {
 	return &RouteMgr{}
+}
+
+func (m *RouteMgr) Shutdown() {
+	m.lock.Lock()
+	defer m.lock.Unlock()
+
+	m.shuttingdown = true
+	m.resetInner()
 }
 
 const (
@@ -51,6 +60,10 @@ func (m *RouteMgr) Set(
 	local_cidrs []*net.IPNet) error {
 	m.lock.Lock()
 	defer m.lock.Unlock()
+
+	if m.shuttingdown {
+		return nil
+	}
 
 	if m.set {
 		m.resetInner()

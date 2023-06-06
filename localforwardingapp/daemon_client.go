@@ -29,6 +29,7 @@ func (d *Daemon) clientRenew() bool {
 		log.WithError(err).Error("Error listening")
 		return false
 	}
+	defer conn.Close()
 	connUdp := conn.(*net.UDPConn)
 
 	recv_chan := make(chan *packetFromAddr)
@@ -92,6 +93,7 @@ func (d *Daemon) clinetHandshake() {
 		log.WithError(err).Error("Error listening")
 		return
 	}
+	defer conn.Close()
 	connUdp := conn.(*net.UDPConn)
 	broad_cast_addr := &net.UDPAddr{
 		IP:   net.IPv4bcast,
@@ -186,6 +188,9 @@ func (d *Daemon) runClient() {
 			if !d.client.connected {
 				break
 			}
+			if d.shuttingdown {
+				break
+			}
 			select {
 			case <-d.client.serverChanged:
 				d.client.connected = false
@@ -267,4 +272,5 @@ func (d *Daemon) startClient() error {
 func (d *Daemon) stopClient() {
 	d.shuttingdown = true
 	d.listener.Close()
+	d.client.routemgr.Shutdown()
 }
