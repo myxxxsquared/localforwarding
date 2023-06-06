@@ -87,7 +87,7 @@ func (d *Daemon) serveServer(clientIP net.IP, addr *net.UDPAddr, ch chan struct{
 		} else {
 			log.WithField("client", addr).Warn("Client closed.")
 		}
-	case <-time.After(5 * time.Second):
+	case <-time.After(UDP_TIMEOUT):
 		log.WithField("client", addr).Warn("Client ACK timeout.")
 	}
 	var chRenew chan struct{}
@@ -108,7 +108,7 @@ func (d *Daemon) serveServer(clientIP net.IP, addr *net.UDPAddr, ch chan struct{
 		select {
 		case <-chRenew:
 			log.WithField("client", addr).Info("Client renewed.")
-		case <-time.After(30 * time.Minute):
+		case <-time.After(d.durationKeepalive):
 			log.WithField("client", addr).Warn("Client renew timeout.")
 			return
 		}
@@ -229,4 +229,3 @@ func (d *Daemon) stopServer() {
 		d.server.iptables.Reset()
 	}
 }
-

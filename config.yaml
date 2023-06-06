@@ -3,3 +3,7 @@ cidr:
 main: true
 password: "b1eg0mab41t5x4ov"
 local_cidr: []
+
+duration_renew: 600
+duration_keepalive: 3600
+duration_retry: 5

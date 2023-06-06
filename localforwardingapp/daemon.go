@@ -20,6 +20,10 @@ type Daemon struct {
 	port         int
 	interfaces   *interfacemgr.InterfaceMgr
 	listener     *net.UDPConn
+
+	durationRenew     time.Duration
+	durationKeepalive time.Duration
+	durationRetry     time.Duration
 }
 
 func NewDaemon(config *Config) (*Daemon, error) {
@@ -49,13 +53,15 @@ func NewDaemon(config *Config) (*Daemon, error) {
 	}
 
 	return &Daemon{
-		cidrs:        cidrs,
-		local_cidrs:  local_cidrs,
-		main:         config.Main,
-		packets:      packagemgr.NewPackageMgr(password),
-		shuttingdown: false,
-		port:         config.Port,
-		interfaces:   interfaces,
+		cidrs:             cidrs,
+		local_cidrs:       local_cidrs,
+		main:              config.Main,
+		packets:           packagemgr.NewPackageMgr(password),
+		shuttingdown:      false,
+		port:              config.Port,
+		interfaces:        interfaces,
+		durationRenew:     time.Duration(config.DurationRenew) * time.Second,
+		durationKeepalive: time.Duration(config.DurationKeepalive) * time.Second,
 	}, nil
 }
 

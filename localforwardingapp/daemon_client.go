@@ -16,17 +16,18 @@ type daemonClient struct {
 	connected     bool
 	clientIP      net.IP
 	serverIP      net.IP
+	lastRenew     time.Time
 }
 
-func (d *Daemon) clientRenew() {
+func (d *Daemon) clientRenew() bool {
 	if !d.client.connected {
-		return
+		return false
 	}
 
 	conn, err := net.ListenPacket("udp", fmt.Sprintf("%s:0", d.client.clientIP.String()))
 	if err != nil {
 		log.WithError(err).Error("Error listening")
-		return
+		return false
 	}
 	connUdp := conn.(*net.UDPConn)
 
@@ -41,31 +42,35 @@ func (d *Daemon) clientRenew() {
 	err = d.sendPacket(comm.MsgTypeRenew, d.client.clientIP, nil, connUdp, serverAddr)
 	if err != nil {
 		log.WithError(err).Error("Error sending renew")
-		return
+		return false
 	}
 
 	select {
 	case packet, ok := <-recv_chan:
 		if !ok {
 			log.Error("Error receiving renew ack")
-			return
+			return false
 		}
 		if packet.packet.Type != comm.MsgTypeAck {
 			log.Error("Error receiving renew ack")
-			return
+			return false
 		}
 		if !d.client.serverIP.Equal(packet.packet.Server) {
 			log.Error("Error receiving renew ack")
-			return
+			return false
 		}
 		if !d.client.clientIP.Equal(packet.packet.Client) {
 			log.Error("Error receiving renew ack")
-			return
+			return false
 		}
 	case <-time.After(UDP_TIMEOUT):
 		log.Error("Error receiving renew ack")
-		return
+		return false
 	}
+
+	d.client.lastRenew = time.Now()
+
+	return true
 }
 
 func (d *Daemon) clinetHandshake() {
@@ -167,6 +172,7 @@ func (d *Daemon) clinetHandshake() {
 	d.client.connected = true
 	d.client.clientIP = clientIP
 	d.client.serverIP = serverIP
+	d.client.lastRenew = time.Now()
 }
 
 func (d *Daemon) runClient() {
@@ -175,6 +181,25 @@ func (d *Daemon) runClient() {
 			break
 		}
 		d.clinetHandshake()
+	connected_for:
+		for {
+			if !d.client.connected {
+				break
+			}
+			select {
+			case <-d.client.serverChanged:
+				d.client.connected = false
+				d.client.routemgr.Reset()
+				d.client.clientIP = nil
+				d.client.serverIP = nil
+				break connected_for
+			case <-time.After(d.durationRetry):
+				if time.Since(d.client.lastRenew) > d.durationRenew {
+					d.clientRenew()
+				}
+			}
+		}
+		time.Sleep(d.durationRetry)
 	}
 }
 

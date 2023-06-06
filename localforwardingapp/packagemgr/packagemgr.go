@@ -10,6 +10,8 @@ import (
 )
 
 const SALT = "MRmLZi!gHQWBxYwmfSu4Y*88FY1c&qZ&"
+const FORGET_DURATION = time.Minute * 10
+const TORLANCE = time.Minute * 1
 
 // 8 packetid
 // 8 timestamp
@@ -108,7 +110,7 @@ func (m *PackageMgr) processId(packetId uint64) bool {
 	}
 	m.usedIds1[packetId] = true
 
-	if time.Since(m.lastClear) > time.Minute*10 {
+	if time.Since(m.lastClear) > FORGET_DURATION {
 		m.lastClear = time.Now()
 		m.usedIds2 = m.usedIds1
 		m.usedIds1 = map[uint64]bool{}
@@ -127,7 +129,7 @@ func (m *PackageMgr) DecodePackage(p []byte) ([]byte, error) {
 	contentLength := binary.LittleEndian.Uint64(p[16:24])
 
 	timeDelta := time.Since(time.Unix(0, int64(timestamp)))
-	if timeDelta > time.Minute || timeDelta < -time.Minute {
+	if timeDelta > TORLANCE || timeDelta < -TORLANCE {
 		return nil, ErrInvalidPackage{Reason: ErrInvalidPackageTimestamp}
 	}
 
