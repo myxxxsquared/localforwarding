@@ -42,27 +42,16 @@ func (d *Daemon) startServer() error {
 }
 
 func (d *Daemon) listenServer() {
+	ch := make(chan *packetFromAddr)
+	d.startRecvPacket(ch, d.listener)
 	for {
-		buffer := make([]byte, 1600)
-		n, addr, err := d.listener.ReadFromUDP(buffer)
-		if err != nil {
-			if d.shuttingdown {
-				break
-			} else {
-				log.WithError(err).Error("Error reading from udp")
-				continue
-			}
+		recved, ok := <-ch
+		if !ok {
+			log.Fatal("Error receiving packet from client.")
+			break
 		}
-
-		enclosed, err := d.packets.DecodePackage(buffer[:n])
-		if err != nil {
-			log.WithField("client", addr).WithError(err).Warn("Invalid packet from client.")
-		}
-		packet := comm.Decode(enclosed)
-		if packet == nil {
-			log.WithField("client", addr).Warn("Failed to decode packet from client.")
-			continue
-		}
+		packet := recved.packet
+		addr := recved.addr
 
 		switch packet.Type {
 		case comm.MsgTypeDiscovery:
@@ -158,16 +147,15 @@ func (d *Daemon) handleDiscovery(addr *net.UDPAddr, packet *comm.Packet) {
 		}
 	}
 
-	assignPacket := comm.NewPacket(comm.MsgTypeAssign, packet.Client, serverIP)
-	sending, err := d.packets.EncodePackage(assignPacket.Encode())
+	clientUdpChan := make(chan struct{}, 1)
+	d.server.clientUdpConn.Set(addr.String(), clientUdpChan)
+
+	err := d.sendPacket(comm.MsgTypeAssign, packet.Client, serverIP, d.listener, addr)
 	if err != nil {
-		log.WithField("client", addr).WithError(err).Warn("Failed to encode assign packet.")
+		log.WithField("client", addr).WithError(err).Warn("Failed to send assign packet.")
 		return
 	}
 
-	clientUdpChan := make(chan struct{}, 1)
-	d.server.clientUdpConn.Set(addr.String(), clientUdpChan)
-	d.listener.WriteToUDP(sending, addr)
 	go d.serveServer(packet.Client, addr, clientUdpChan)
 }
 

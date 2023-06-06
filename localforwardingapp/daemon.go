@@ -64,6 +64,7 @@ func NewDaemon(config *Config) (*Daemon, error) {
 		interfaces:        interfaces,
 		durationRenew:     time.Duration(config.DurationRenew) * time.Second,
 		durationKeepalive: time.Duration(config.DurationKeepalive) * time.Second,
+		durationRetry:     time.Duration(config.DurationRetry) * time.Second,
 	}, nil
 }
 
@@ -112,7 +113,11 @@ func (d *Daemon) sendPacket(
 	conn *net.UDPConn,
 	dst *net.UDPAddr) error {
 	msg := comm.NewPacket(msgType, clientIP, serverIP)
-	sending, err := d.packets.EncodePackage(msg.Encode())
+	encoded, err := msg.Encode()
+	if err != nil {
+		return err
+	}
+	sending, err := d.packets.EncodePackage(encoded)
 	if err != nil {
 		return err
 	}
@@ -135,10 +140,12 @@ func (d *Daemon) startRecvPacket(ch chan<- *packetFromAddr, conn *net.UDPConn) {
 		}
 		decoded, err := d.packets.DecodePackage(buf[:n])
 		if err != nil {
+			log.WithError(err).Error("Error decoding package")
 			continue
 		}
-		packet := comm.Decode(decoded)
-		if packet == nil {
+		packet, err := comm.Decode(decoded)
+		if err != nil {
+			log.WithError(err).Error("Error decoding packet")
 			continue
 		}
 		packetWithAddr := packetFromAddr{

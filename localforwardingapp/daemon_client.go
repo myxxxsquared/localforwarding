@@ -32,9 +32,6 @@ func (d *Daemon) clientRenew() bool {
 	defer conn.Close()
 	connUdp := conn.(*net.UDPConn)
 
-	recv_chan := make(chan *packetFromAddr)
-	go d.startRecvPacket(recv_chan, connUdp)
-
 	serverAddr := &net.UDPAddr{
 		IP:   d.client.serverIP,
 		Port: d.port,
@@ -45,6 +42,9 @@ func (d *Daemon) clientRenew() bool {
 		log.WithError(err).Error("Error sending renew")
 		return false
 	}
+
+	recv_chan := make(chan *packetFromAddr)
+	go d.startRecvPacket(recv_chan, connUdp)
 
 	select {
 	case packet, ok := <-recv_chan:
@@ -100,14 +100,14 @@ func (d *Daemon) clinetHandshake() {
 		Port: d.port,
 	}
 
-	recv_chan := make(chan *packetFromAddr)
-	go d.startRecvPacket(recv_chan, connUdp)
-
 	err = d.sendPacket(comm.MsgTypeDiscovery, clientIP, nil, connUdp, broad_cast_addr)
 	if err != nil {
 		log.WithError(err).Error("Error sending discovery")
 		return
 	}
+
+	recv_chan := make(chan *packetFromAddr)
+	go d.startRecvPacket(recv_chan, connUdp)
 
 	var serverIP net.IP
 	var serverAddr *net.UDPAddr
@@ -209,27 +209,16 @@ func (d *Daemon) runClient() {
 }
 
 func (d *Daemon) listenClient() {
+	ch := make(chan *packetFromAddr)
+	d.startRecvPacket(ch, d.listener)
 	for {
-		buffer := make([]byte, 1600)
-		n, addr, err := d.listener.ReadFromUDP(buffer)
-		if err != nil {
-			if d.shuttingdown {
-				break
-			} else {
-				log.WithError(err).Error("Error reading from udp")
-				continue
-			}
+		recved, ok := <-ch
+		if !ok {
+			log.Fatal("Error receiving packet from client.")
+			break
 		}
-
-		enclosed, err := d.packets.DecodePackage(buffer[:n])
-		if err != nil {
-			log.WithField("client", addr).WithError(err).Warn("Invalid packet from client.")
-		}
-		packet := comm.Decode(enclosed)
-		if packet == nil {
-			log.WithField("client", addr).Warn("Failed to decode packet from client.")
-			continue
-		}
+		packet := recved.packet
+		addr := recved.addr
 
 		switch packet.Type {
 		case comm.MsgTypeServerChanged:

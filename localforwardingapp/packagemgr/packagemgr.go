@@ -63,6 +63,7 @@ func (m *PackageMgr) EncodePackage(p []byte) ([]byte, error) {
 	result = append(result, randomBytes...)
 	result = binary.LittleEndian.AppendUint64(result, currentTime)
 	result = binary.LittleEndian.AppendUint64(result, contentLength)
+	result = append(result, p...)
 	sum := m.calcHash(result)
 	result = append(result, sum...)
 
