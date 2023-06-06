@@ -1,3 +1,5 @@
-cidr: "162.105.88.0/24"
+cidr:
+  - "162.105.88.0/24"
 main: true
 password: "b1eg0mab41t5x4ov"
+local_cidr: []
