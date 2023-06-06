@@ -5,6 +5,7 @@ import (
 	"sync"
 	"syscall"
 
+	log "github.com/sirupsen/logrus"
 	"github.com/vishvananda/netlink"
 )
 
@@ -65,6 +66,12 @@ func (m *RouteMgr) Set(
 		return nil
 	}
 
+	log.WithFields(log.Fields{
+		"client": clinet,
+		"server": server,
+		"ifname": ifname.Name,
+	}).Info("Setting route")
+
 	if m.set {
 		m.resetInner()
 	}
@@ -85,21 +92,30 @@ func (m *RouteMgr) Set(
 		return err
 	}
 
-	var gwRoute *netlink.Route
+	log.WithFields(log.Fields{
+		"routes": routes,
+	}).Info("Route list")
+
+	var gwRoute netlink.Route
+	var hasGwRoute bool
+
 	for _, route := range routes {
-		if route.Dst == nil {
-			if gwRoute != nil {
+		if route.Dst == nil && route.Gw != nil {
+			if hasGwRoute {
 				return &RouteMgrError{ROUTE_MGR_ERR_MULTI_GW_ROUTE}
 			}
-			gwRoute = &route
+			gwRoute = route
+			hasGwRoute = true
 		}
 	}
 
-	if gwRoute == nil {
+	if !hasGwRoute {
 		return &RouteMgrError{ROUTE_MGR_ERR_NO_GW_ROUTE}
 	}
 
-	m.gwRoute = gwRoute
+	log.WithField("route", gwRoute).Info("Found gateway route")
+
+	m.gwRoute = &gwRoute
 	m.gwRouteReplace = &netlink.Route{
 		LinkIndex:  gwRoute.LinkIndex,
 		ILinkIndex: gwRoute.ILinkIndex,
@@ -124,38 +140,47 @@ func (m *RouteMgr) Set(
 			ILinkIndex: gwRoute.ILinkIndex,
 			Scope:      gwRoute.Scope,
 			Dst:        cidr,
-			Gw:         clinet,
+			Gw:         gwRoute.Gw,
 			Priority:   gwRoute.Priority,
 		})
 	}
 
-	err = handle.RouteDel(gwRoute)
+	err = handle.RouteDel(&gwRoute)
 	if err != nil {
 		return err
 	}
+	log.WithField("route", gwRoute).Info("Deleted gateway route")
+
 	err = handle.RouteAdd(m.gwRouteReplace)
 	if err != nil {
-		handle.RouteAdd(gwRoute)
+		handle.RouteAdd(&gwRoute)
 		return err
 	}
+	log.WithField("route", m.gwRouteReplace).Info("Added gateway route with higher priority")
+
 	err = handle.RouteAdd(m.gwRouteNew)
 	if err != nil {
 		handle.RouteDel(m.gwRouteReplace)
-		handle.RouteAdd(gwRoute)
+		handle.RouteAdd(&gwRoute)
 		return err
 	}
+	log.WithField("route", m.gwRouteNew).Info("Added gateway route")
+
 	for i, route := range m.localRoutes {
 		err = handle.RouteAdd(route)
-		if err != nil {
+		if err != nil && err.Error() != "file exists" {
 			for j := 0; j < i; j++ {
 				handle.RouteDel(m.localRoutes[j])
 			}
 			handle.RouteDel(m.gwRouteNew)
 			handle.RouteDel(m.gwRouteReplace)
-			handle.RouteAdd(gwRoute)
+			handle.RouteAdd(&gwRoute)
 			return err
 		}
+		log.WithField("route", route).Info("Added local route")
 	}
+
+	m.set = true
 
 	return nil
 }
@@ -167,16 +192,31 @@ func (m *RouteMgr) resetInner() {
 
 	handle, err := netlink.NewHandle(syscall.AF_INET)
 	if err != nil {
+		log.WithError(err).Error("Error creating handle when reset route")
 		return
 	}
 	defer handle.Delete()
 
-	handle.RouteDel(m.gwRouteNew)
-	handle.RouteDel(m.gwRouteReplace)
+	log.Info("Resetting route")
+
 	for _, route := range m.localRoutes {
-		handle.RouteDel(route)
+		err := handle.RouteDel(route)
+		if err != nil {
+			log.WithError(err).Error("Error deleting local route")
+		}
 	}
-	handle.RouteAdd(m.gwRoute)
+	err = handle.RouteDel(m.gwRouteNew)
+	if err != nil {
+		log.WithError(err).Error("Error deleting gateway route")
+	}
+	err = handle.RouteDel(m.gwRouteReplace)
+	if err != nil {
+		log.WithError(err).Error("Error deleting gateway route")
+	}
+	err = handle.RouteAdd(m.gwRoute)
+	if err != nil {
+		log.WithError(err).Error("Error adding gateway route")
+	}
 
 	m.set = false
 }

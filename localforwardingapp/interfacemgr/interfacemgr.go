@@ -8,7 +8,7 @@ import (
 )
 
 type InterfaceInfo struct {
-	Interface *net.Interface
+	Interface net.Interface
 	Addrs     []*net.IPNet
 }
 
@@ -51,7 +51,7 @@ func GetInterfaces(cidrs []*net.IPNet) ([]InterfaceInfo, error) {
 
 		if len(matchedAddrs) > 0 {
 			infos = append(infos, InterfaceInfo{
-				Interface: &i,
+				Interface: i,
 				Addrs:     matchedAddrs,
 			})
 		}
@@ -60,6 +60,10 @@ func GetInterfaces(cidrs []*net.IPNet) ([]InterfaceInfo, error) {
 	sort.Slice(infos, func(i, j int) bool {
 		return infos[i].Interface.Name < infos[j].Interface.Name
 	})
+
+	for _, i := range infos {
+		log.WithField("interface", i.Interface.Name).WithField("addrs", i.Addrs).Info("Interface found")
+	}
 
 	return infos, nil
 }

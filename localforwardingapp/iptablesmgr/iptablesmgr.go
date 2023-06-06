@@ -35,7 +35,7 @@ func (m *IPTablesMgr) Add(addr net.IP) {
 		return
 	}
 
-	cmd := exec.Command("iptables", "-t", "nat", "-A", "PREROUTING", "-s", addrname, "-j", "MASQUERADE")
+	cmd := exec.Command("iptables", "-t", "nat", "-A", "POSTROUTING", "-s", addrname, "-j", "MASQUERADE")
 
 	go func() {
 		err := cmd.Run()
@@ -55,7 +55,9 @@ func (m *IPTablesMgr) Remove(addr net.IP) {
 		return
 	}
 
-	cmd := exec.Command("iptables", "-t", "nat", "-D", "PREROUTING", "-s", addrname, "-j", "MASQUERADE")
+	delete(m.added, addrname)
+
+	cmd := exec.Command("iptables", "-t", "nat", "-D", "POSTROUTING", "-s", addrname, "-j", "MASQUERADE")
 
 	go func() {
 		err := cmd.Run()
@@ -70,13 +72,15 @@ func (m *IPTablesMgr) Reset() {
 	defer m.lock.Unlock()
 
 	for addrname := range m.added {
-		cmd := exec.Command("iptables", "-t", "nat", "-D", "PREROUTING", "-s", addrname, "-j", "MASQUERADE")
+		cmd := exec.Command("iptables", "-t", "nat", "-D", "POSTROUTING", "-s", addrname, "-j", "MASQUERADE")
 
 		err := cmd.Run()
 		if err != nil {
 			log.WithError(err).WithField("addrname", addrname).Error("Error resetting iptables rule")
 		}
 	}
+
+	m.added = make(map[string]struct{})
 }
 
 func (m *IPTablesMgr) SetShutdown() {

@@ -136,6 +136,7 @@ func (d *Daemon) startRecvPacket(ch chan<- *packetFromAddr, conn *net.UDPConn) {
 		buf := make([]byte, 1600)
 		n, addr, err := conn.ReadFromUDP(buf)
 		if err != nil {
+			log.Warn("Error reading from UDP")
 			break
 		}
 		decoded, err := d.packets.DecodePackage(buf[:n])
@@ -148,6 +149,7 @@ func (d *Daemon) startRecvPacket(ch chan<- *packetFromAddr, conn *net.UDPConn) {
 			log.WithError(err).Error("Error decoding packet")
 			continue
 		}
+		log.WithFields(log.Fields{"client": addr, "type": packet.Type}).Info("Received packet from UDP.")
 		packetWithAddr := packetFromAddr{
 			packet: packet,
 			addr:   addr,

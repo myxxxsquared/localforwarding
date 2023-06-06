@@ -37,7 +37,7 @@ func (d *Daemon) clientRenew() bool {
 		Port: d.port,
 	}
 
-	err = d.sendPacket(comm.MsgTypeRenew, d.client.clientIP, nil, connUdp, serverAddr)
+	err = d.sendPacket(comm.MsgTypeRenew, d.client.clientIP, d.client.serverIP, connUdp, serverAddr)
 	if err != nil {
 		log.WithError(err).Error("Error sending renew")
 		return false
@@ -154,7 +154,7 @@ func (d *Daemon) clinetHandshake() {
 		"server": serverIP,
 	}).Info("Discovery assign received")
 
-	err = d.sendPacket(comm.MsgTypeAck, clientIP, nil, connUdp, serverAddr)
+	err = d.sendPacket(comm.MsgTypeAck, clientIP, serverIP, connUdp, serverAddr)
 	if err != nil {
 		log.WithError(err).Error("Error sending ack")
 		return
@@ -168,27 +168,27 @@ func (d *Daemon) clinetHandshake() {
 	select {
 	case packet, ok := <-recv_chan:
 		if !ok {
-			log.Error("Error receiving discovery ack")
+			log.Error("Error receiving serverOK, no packet")
 			return
 		}
 		if packet.packet.Type != comm.MsgTypeServerOK {
-			log.Error("Error receiving discovery ack")
+			log.Error("Error receiving serverOK, invalid type")
 			return
 		}
-		if !packet.addr.IP.Equal(packet.packet.Server) {
-			log.Error("Error receiving discovery ack")
+		if !serverIP.Equal(packet.packet.Server) {
+			log.Error("Error receiving serverOK, invalid server")
 			return
 		}
-		if !packet.addr.IP.Equal(packet.packet.Client) {
-			log.Error("Error receiving discovery ack")
+		if !clientIP.Equal(packet.packet.Client) {
+			log.Error("Error receiving serverOK, invalid client")
 			return
 		}
 	case <-time.After(UDP_TIMEOUT):
-		log.Error("Error receiving discovery ack")
+		log.Error("Error receiving serverOK, timeout")
 		return
 	}
 
-	err = d.client.routemgr.Set(*first_if.Interface, clientIP, serverIP, d.local_cidrs)
+	err = d.client.routemgr.Set(first_if.Interface, clientIP, serverIP, d.local_cidrs)
 	if err != nil {
 		log.WithError(err).Error("Error setting route")
 		return
@@ -228,7 +228,20 @@ func (d *Daemon) runClient() {
 				break connected_for
 			case <-time.After(d.durationRetry):
 				if time.Since(d.client.lastRenew) > d.durationRenew {
-					d.clientRenew()
+					succ := false
+					for i := 0; i < 10; i++ {
+						if d.clientRenew() {
+							succ = true
+							break
+						}
+					}
+					if !succ {
+						d.client.connected = false
+						d.client.routemgr.Reset()
+						d.client.clientIP = nil
+						d.client.serverIP = nil
+						break connected_for
+					}
 				}
 			}
 		}
@@ -238,12 +251,15 @@ func (d *Daemon) runClient() {
 
 func (d *Daemon) listenClient() {
 	ch := make(chan *packetFromAddr)
-	d.startRecvPacket(ch, d.listener)
+	go d.startRecvPacket(ch, d.listener)
 	for {
 		recved, ok := <-ch
 		if !ok {
-			log.Fatal("Error receiving packet from client.")
-			break
+			if d.shuttingdown {
+				break
+			} else {
+				log.Fatal("Error receiving packet from client.")
+			}
 		}
 		packet := recved.packet
 		addr := recved.addr
@@ -287,6 +303,7 @@ func (d *Daemon) startClient() error {
 }
 
 func (d *Daemon) stopClient() {
+	log.Info("Stopping client")
 	d.shuttingdown = true
 	d.listener.Close()
 	d.client.routemgr.Shutdown()

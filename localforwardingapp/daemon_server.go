@@ -43,15 +43,20 @@ func (d *Daemon) startServer() error {
 
 func (d *Daemon) listenServer() {
 	ch := make(chan *packetFromAddr)
-	d.startRecvPacket(ch, d.listener)
+	go d.startRecvPacket(ch, d.listener)
 	for {
 		recved, ok := <-ch
 		if !ok {
-			log.Fatal("Error receiving packet from client.")
-			break
+			if d.shuttingdown {
+				break
+			} else {
+				log.Fatal("Error receiving packet from client.")
+			}
 		}
 		packet := recved.packet
 		addr := recved.addr
+
+		log.WithFields(log.Fields{"client": addr, "type": packet.Type}).Info("Received packet from client.")
 
 		switch packet.Type {
 		case comm.MsgTypeDiscovery:
@@ -66,7 +71,7 @@ func (d *Daemon) listenServer() {
 	}
 }
 
-func (d *Daemon) serveServer(clientIP net.IP, addr *net.UDPAddr, ch chan struct{}) {
+func (d *Daemon) serveServer(clientIP net.IP, addr *net.UDPAddr, ch chan struct{}, oldChRenew chan struct{}, serverIP net.IP) {
 	succ := false
 	select {
 	case _, ok := <-ch:
@@ -78,7 +83,22 @@ func (d *Daemon) serveServer(clientIP net.IP, addr *net.UDPAddr, ch chan struct{
 		}
 	case <-time.After(UDP_TIMEOUT):
 		log.WithField("client", addr).Warn("Client ACK timeout.")
+		return
 	}
+
+	err := d.sendPacket(comm.MsgTypeServerOK, clientIP, serverIP, d.listener, addr)
+	if err != nil {
+		log.WithField("client", addr).WithError(err).Error("Failed to send server OK packet.")
+		return
+	}
+	log.WithFields(log.Fields{"client": clientIP.String(), "server": serverIP}).Info("Server OK packet sent.")
+
+	if oldChRenew != nil {
+		d.server.clientUdpConn.Remove(addr.String())
+		oldChRenew <- struct{}{}
+		return
+	}
+
 	var chRenew chan struct{}
 	if succ {
 		chRenew = make(chan struct{}, 1)
@@ -119,14 +139,14 @@ func (d *Daemon) handleDiscovery(addr *net.UDPAddr, packet *comm.Packet) {
 		return
 	}
 
-	oldCh, ok := d.server.clientRenew.Get(packet.Client.String())
-	if ok {
-		oldCh <- struct{}{}
-		log.WithField("client", addr).Info("Client renewed.")
-		return
+	oldChRenew, okRenew := d.server.clientRenew.Get(packet.Client.String())
+	if okRenew {
+		log.WithField("client", addr).Info("Discovery received but client already connected.")
+	} else {
+		oldChRenew = nil
 	}
 
-	oldCh, ok = d.server.clientUdpConn.Get(addr.String())
+	oldCh, ok := d.server.clientUdpConn.Get(addr.String())
 	if ok {
 		close(oldCh)
 		log.WithField("client", addr).Info("Client reconnected.")
@@ -147,6 +167,13 @@ func (d *Daemon) handleDiscovery(addr *net.UDPAddr, packet *comm.Packet) {
 		}
 	}
 
+	if serverIP == nil {
+		log.WithFields(log.Fields{"client": clientIP.String(), "server": serverIP}).Warn("Client connected but no server IP found.")
+		return
+	}
+
+	log.WithFields(log.Fields{"client": clientIP.String(), "server": serverIP}).Info("Client connected.")
+
 	clientUdpChan := make(chan struct{}, 1)
 	d.server.clientUdpConn.Set(addr.String(), clientUdpChan)
 
@@ -155,8 +182,9 @@ func (d *Daemon) handleDiscovery(addr *net.UDPAddr, packet *comm.Packet) {
 		log.WithField("client", addr).WithError(err).Warn("Failed to send assign packet.")
 		return
 	}
+	log.WithFields(log.Fields{"client": clientIP.String(), "server": serverIP}).Info("Assign packet sent.")
 
-	go d.serveServer(packet.Client, addr, clientUdpChan)
+	go d.serveServer(packet.Client, addr, clientUdpChan, oldChRenew, serverIP)
 }
 
 func (d *Daemon) handleAck(addr *net.UDPAddr, packet *comm.Packet) {
@@ -208,12 +236,9 @@ func (d *Daemon) handleRenew(addr *net.UDPAddr, packet *comm.Packet) {
 }
 
 func (d *Daemon) stopServer() {
+	log.Info("Stopping server...")
 	d.shuttingdown = true
-	if d.server != nil && d.listener != nil {
-		d.listener.Close()
-	}
-	if d.server != nil && d.server.iptables != nil {
-		d.server.iptables.SetShutdown()
-		d.server.iptables.Reset()
-	}
+	d.listener.Close()
+	d.server.iptables.SetShutdown()
+	d.server.iptables.Reset()
 }
