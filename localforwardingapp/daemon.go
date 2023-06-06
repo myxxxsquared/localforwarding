@@ -7,6 +7,8 @@ import (
 	"github.com/myxxxsquared/localforwarding/localforwardingapp/comm"
 	"github.com/myxxxsquared/localforwarding/localforwardingapp/interfacemgr"
 	"github.com/myxxxsquared/localforwarding/localforwardingapp/packagemgr"
+	log "github.com/sirupsen/logrus"
+	"kernel.org/pub/linux/libs/security/libcap/cap"
 )
 
 type Daemon struct {
@@ -65,7 +67,20 @@ func NewDaemon(config *Config) (*Daemon, error) {
 	}, nil
 }
 
+func (d *Daemon) checkCap() {
+	c := cap.GetProc()
+	ok, err := c.GetFlag(cap.Effective, cap.NET_ADMIN)
+	if err != nil {
+		log.WithError(err).Fatal("Error checking capabilities")
+	}
+	if !ok {
+		log.Fatal("Insufficient capabilities")
+	}
+}
+
 func (d *Daemon) Start() error {
+	d.checkCap()
+
 	if d.main {
 		return d.startServer()
 	} else {
