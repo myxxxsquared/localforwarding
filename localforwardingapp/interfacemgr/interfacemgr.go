@@ -12,7 +12,7 @@ type InterfaceInfo struct {
 	Addrs     []*net.IPNet
 }
 
-func GetInterfaces(cidrs []*net.IPNet) ([]InterfaceInfo, error) {
+func GetInterfaces(cidr *net.IPNet) ([]InterfaceInfo, error) {
 	interfaces, err := net.Interfaces()
 	if err != nil {
 		log.WithError(err).Error("Error getting interfaces")
@@ -33,14 +33,7 @@ func GetInterfaces(cidrs []*net.IPNet) ([]InterfaceInfo, error) {
 				log.WithField("interface", i.Name).WithField("addr", a).Error("Error casting address")
 				continue
 			}
-			hasCidr := false
-			for _, cidr := range cidrs {
-				if cidr.Contains(netaddr.IP) {
-					hasCidr = true
-					break
-				}
-			}
-			if hasCidr {
+			if cidr.Contains(netaddr.IP) {
 				matchedAddrs = append(matchedAddrs, netaddr)
 			}
 		}
@@ -70,18 +63,18 @@ func GetInterfaces(cidrs []*net.IPNet) ([]InterfaceInfo, error) {
 
 type InterfaceMgr struct {
 	interfaces []InterfaceInfo
-	cidrs      []*net.IPNet
+	cidr       *net.IPNet
 }
 
-func NewInterfaceMgr(cidrs []*net.IPNet) (*InterfaceMgr, error) {
-	interfaces, err := GetInterfaces(cidrs)
+func NewInterfaceMgr(cidr *net.IPNet) (*InterfaceMgr, error) {
+	interfaces, err := GetInterfaces(cidr)
 	if err != nil {
 		return nil, err
 	}
 
 	return &InterfaceMgr{
 		interfaces: interfaces,
-		cidrs:      cidrs,
+		cidr:       cidr,
 	}, nil
 }
 
@@ -90,7 +83,7 @@ func (i *InterfaceMgr) GetInterfaces() []InterfaceInfo {
 }
 
 func (i *InterfaceMgr) CheckChanged() ([]InterfaceInfo, bool) {
-	interfaces, err := GetInterfaces(i.cidrs)
+	interfaces, err := GetInterfaces(i.cidr)
 	if err != nil {
 		return nil, false
 	}

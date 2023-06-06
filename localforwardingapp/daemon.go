@@ -12,7 +12,7 @@ import (
 )
 
 type Daemon struct {
-	cidrs        []*net.IPNet
+	cidr         *net.IPNet
 	local_cidrs  []*net.IPNet
 	main         bool
 	packets      *packagemgr.PackageMgr
@@ -29,13 +29,9 @@ type Daemon struct {
 }
 
 func NewDaemon(config *Config) (*Daemon, error) {
-	cidrs := []*net.IPNet{}
-	for _, cidr := range config.Cidrs {
-		_, parsedCidr, err := net.ParseCIDR(cidr)
-		if err != nil {
-			return nil, err
-		}
-		cidrs = append(cidrs, parsedCidr)
+	_, cidr, err := net.ParseCIDR(config.Cidr)
+	if err != nil {
+		return nil, err
 	}
 
 	local_cidrs := []*net.IPNet{}
@@ -49,13 +45,13 @@ func NewDaemon(config *Config) (*Daemon, error) {
 
 	password := []byte(config.Password)
 
-	interfaces, err := interfacemgr.NewInterfaceMgr(cidrs)
+	interfaces, err := interfacemgr.NewInterfaceMgr(cidr)
 	if err != nil {
 		return nil, err
 	}
 
 	return &Daemon{
-		cidrs:             cidrs,
+		cidr:              cidr,
 		local_cidrs:       local_cidrs,
 		main:              config.Main,
 		packets:           packagemgr.NewPackageMgr(password),
@@ -98,12 +94,7 @@ func (d *Daemon) Stop() {
 }
 
 func (d *Daemon) isInCidr(ip net.IP) bool {
-	for _, cidr := range d.cidrs {
-		if cidr.Contains(ip) {
-			return true
-		}
-	}
-	return false
+	return d.cidr.Contains(ip)
 }
 
 func (d *Daemon) sendPacket(

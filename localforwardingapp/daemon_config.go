@@ -1,7 +1,7 @@
 package localforwardingapp
 
 type Config struct {
-	Cidrs      []string `yaml:"cidr"`
+	Cidr       string   `yaml:"cidr"`
 	Main       bool     `yaml:"main"`
 	Password   string   `yaml:"password"`
 	Port       int      `yaml:"port"`
