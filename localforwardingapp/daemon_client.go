@@ -43,6 +43,11 @@ func (d *Daemon) clientRenew() bool {
 		return false
 	}
 
+	log.WithFields(log.Fields{
+		"client": d.client.clientIP,
+		"server": d.client.serverIP,
+	}).Info("Renew sent")
+
 	recv_chan := make(chan *packetFromAddr)
 	go d.startRecvPacket(recv_chan, connUdp)
 
@@ -68,6 +73,11 @@ func (d *Daemon) clientRenew() bool {
 		log.Error("Error receiving renew ack")
 		return false
 	}
+
+	log.WithFields(log.Fields{
+		"client": d.client.clientIP,
+		"server": d.client.serverIP,
+	}).Info("Renewed")
 
 	d.client.lastRenew = time.Now()
 
@@ -106,6 +116,8 @@ func (d *Daemon) clinetHandshake() {
 		return
 	}
 
+	log.WithField("client", clientIP).Info("Discovery sent")
+
 	recv_chan := make(chan *packetFromAddr)
 	go d.startRecvPacket(recv_chan, connUdp)
 
@@ -118,7 +130,7 @@ func (d *Daemon) clinetHandshake() {
 			log.Error("Error receiving discovery ack")
 			return
 		}
-		if packet.packet.Type != comm.MsgTypeAck {
+		if packet.packet.Type != comm.MsgTypeAssign {
 			log.Error("Error receiving discovery ack")
 			return
 		}
@@ -137,11 +149,21 @@ func (d *Daemon) clinetHandshake() {
 		return
 	}
 
+	log.WithFields(log.Fields{
+		"client": clientIP,
+		"server": serverIP,
+	}).Info("Discovery assign received")
+
 	err = d.sendPacket(comm.MsgTypeAck, clientIP, nil, connUdp, serverAddr)
 	if err != nil {
 		log.WithError(err).Error("Error sending ack")
 		return
 	}
+
+	log.WithFields(log.Fields{
+		"client": clientIP,
+		"server": serverIP,
+	}).Info("Ack sent")
 
 	select {
 	case packet, ok := <-recv_chan:
@@ -171,6 +193,12 @@ func (d *Daemon) clinetHandshake() {
 		log.WithError(err).Error("Error setting route")
 		return
 	}
+
+	log.WithFields(log.Fields{
+		"client": clientIP,
+		"server": serverIP,
+	}).Info("Route set")
+
 	d.client.connected = true
 	d.client.clientIP = clientIP
 	d.client.serverIP = serverIP
