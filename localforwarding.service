@@ -5,7 +5,7 @@ After=network-online.target
 
 [Service]
 Type=simple
-WorkingDirectory=/sbin/localforwarding -config=/etc/localforwarding.yaml
+ExecStart=/sbin/localforwarding -config=/etc/localforwarding.yaml
 Restart=always
 
 [Install]
