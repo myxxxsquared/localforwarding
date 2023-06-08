@@ -1,6 +1,7 @@
 package localforwardingapp
 
 import (
+	"fmt"
 	"net"
 	"time"
 
@@ -37,6 +38,7 @@ func (d *Daemon) startServer() error {
 	d.server.iptables = iptablesmgr.NewIPTablesMgr()
 
 	go d.listenServer()
+	go d.monitorChanging()
 
 	return nil
 }
@@ -113,10 +115,16 @@ func (d *Daemon) serveServer(clientIP net.IP, addr *net.UDPAddr, ch chan struct{
 	d.server.iptables.Add(clientIP)
 	defer d.server.iptables.Remove(clientIP)
 
+relay_loop:
 	for {
 		select {
-		case <-chRenew:
-			log.WithField("client", addr).Info("Client renewed.")
+		case _, ok := <-chRenew:
+			if !ok {
+				log.WithField("client", addr).Info("Client closed.")
+				break relay_loop
+			} else {
+				log.WithField("client", addr).Info("Client renewed.")
+			}
 		case <-time.After(d.durationKeepalive):
 			log.WithField("client", addr).Warn("Client renew timeout.")
 			return
@@ -233,6 +241,55 @@ func (d *Daemon) handleRenew(addr *net.UDPAddr, packet *comm.Packet) {
 	default:
 		break
 	}
+}
+
+func (d *Daemon) monitorChanging() {
+	for {
+		if d.shuttingdown {
+			break
+		}
+		if _, changed := d.interfaces.CheckChanged(); changed {
+			for item := range d.server.clientRenew.IterBuffered() {
+				close(item.Val)
+			}
+			for item := range d.server.clientUdpConn.IterBuffered() {
+				close(item.Val)
+			}
+			d.sendServerChanged()
+		}
+		time.Sleep(d.durationRetry)
+	}
+}
+
+func (d *Daemon) sendServerChanged() {
+	ifs := d.interfaces.GetInterfaces()
+	if len(ifs) == 0 {
+		log.Warn("No interfaces found.")
+		return
+	}
+
+	first_if := ifs[0]
+	first_if_addr := first_if.Addrs[0]
+	clientIP := first_if_addr.IP
+
+	conn, err := net.ListenPacket("udp", fmt.Sprintf("%s:0", clientIP.String()))
+	if err != nil {
+		log.WithError(err).Error("Error listening")
+		return
+	}
+	defer conn.Close()
+	connUdp := conn.(*net.UDPConn)
+	broad_cast_addr := &net.UDPAddr{
+		IP:   net.IPv4bcast,
+		Port: d.port,
+	}
+
+	err = d.sendPacket(comm.MsgTypeServerChanged, nil, nil, connUdp, broad_cast_addr)
+	if err != nil {
+		log.WithError(err).Error("Error sending serverChanged")
+		return
+	}
+
 }
 
 func (d *Daemon) stopServer() {

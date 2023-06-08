@@ -106,10 +106,7 @@ func (p *Packet) Encode() ([]byte, error) {
 		}
 		return append(append([]byte{'R'}, p.Client...), p.Server...), nil
 	case MsgTypeServerChanged:
-		if len(p.Server) != 4 {
-			return nil, &EncodeError{Reason: EncodeErrorServerIPLength}
-		}
-		return append([]byte{'C'}, p.Server...), nil
+		return []byte{'C'}, nil
 	default:
 		return nil, &EncodeError{Reason: EncodeErrorInvalidType}
 	}
@@ -191,10 +188,9 @@ func Decode(b []byte) (*Packet, error) {
 			return nil, &DecodeError{Reason: DecodeErrorInvalidLength}
 		}
 	case 'C':
-		if len(b) == 5 {
+		if len(b) == 1 {
 			return &Packet{
-				Type:   MsgTypeServerChanged,
-				Server: b[1:],
+				Type: MsgTypeServerChanged,
 			}, nil
 		} else {
 			return nil, &DecodeError{Reason: DecodeErrorInvalidLength}

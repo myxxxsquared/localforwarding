@@ -243,6 +243,13 @@ func (d *Daemon) runClient() {
 						break connected_for
 					}
 				}
+				if _, changed := d.interfaces.CheckChanged(); changed {
+					d.client.connected = false
+					d.client.routemgr.Reset()
+					d.client.clientIP = nil
+					d.client.serverIP = nil
+					break connected_for
+				}
 			}
 		}
 		time.Sleep(d.durationRetry)
