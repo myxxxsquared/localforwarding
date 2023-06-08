@@ -235,6 +235,13 @@ func (d *Daemon) handleRenew(addr *net.UDPAddr, packet *comm.Packet) {
 		log.WithField("client", addr).Warn("Client not found.")
 		return
 	}
+
+	err := d.sendPacket(comm.MsgTypeServerOK, clientIP, packet.Server, d.listener, addr)
+	if err != nil {
+		log.WithField("client", addr).Error("ServerOK sent failed.")
+		return
+	}
+
 	select {
 	case ch <- struct{}{}:
 		break

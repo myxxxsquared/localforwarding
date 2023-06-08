@@ -54,23 +54,23 @@ func (d *Daemon) clientRenew() bool {
 	select {
 	case packet, ok := <-recv_chan:
 		if !ok {
-			log.Error("Error receiving renew ack")
+			log.Error("Error receiving renew serverOK")
 			return false
 		}
-		if packet.packet.Type != comm.MsgTypeAck {
-			log.Error("Error receiving renew ack")
+		if packet.packet.Type != comm.MsgTypeServerOK {
+			log.Error("Error receiving renew serverOK")
 			return false
 		}
 		if !d.client.serverIP.Equal(packet.packet.Server) {
-			log.Error("Error receiving renew ack")
+			log.Error("Error receiving renew serverOK")
 			return false
 		}
 		if !d.client.clientIP.Equal(packet.packet.Client) {
-			log.Error("Error receiving renew ack")
+			log.Error("Error receiving renew serverOK")
 			return false
 		}
 	case <-time.After(UDP_TIMEOUT):
-		log.Error("Error receiving renew ack")
+		log.Error("Error receiving renew serverOK")
 		return false
 	}
 
