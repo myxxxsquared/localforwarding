@@ -298,4 +298,5 @@ func (d *Daemon) stopServer() {
 	d.listener.Close()
 	d.server.iptables.SetShutdown()
 	d.server.iptables.Reset()
+	d.sendServerChanged()
 }

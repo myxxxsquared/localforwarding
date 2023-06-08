@@ -54,10 +54,6 @@ func GetInterfaces(cidr *net.IPNet) ([]InterfaceInfo, error) {
 		return infos[i].Interface.Name < infos[j].Interface.Name
 	})
 
-	for _, i := range infos {
-		log.WithField("interface", i.Interface.Name).WithField("addrs", i.Addrs).Info("Interface found")
-	}
-
 	return infos, nil
 }
 
@@ -68,6 +64,12 @@ type InterfaceMgr struct {
 
 func NewInterfaceMgr(cidr *net.IPNet) (*InterfaceMgr, error) {
 	interfaces, err := GetInterfaces(cidr)
+	if len(interfaces) == 0 {
+		log.Warn("No interfaces")
+	}
+	for _, i := range interfaces {
+		log.WithField("interface", i.Interface.Name).WithField("addrs", i.Addrs).Info("Interface found")
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -83,6 +85,21 @@ func (i *InterfaceMgr) GetInterfaces() []InterfaceInfo {
 }
 
 func (i *InterfaceMgr) CheckChanged() ([]InterfaceInfo, bool) {
+	interfaces, changed := i.checkChangedInner()
+
+	if changed {
+		if len(interfaces) == 0 {
+			log.Warn("Interface changed, no new interfaces")
+		}
+		for _, i := range interfaces {
+			log.WithField("interface", i.Interface.Name).WithField("addrs", i.Addrs).Info("Interface changed")
+		}
+	}
+
+	return interfaces, changed
+}
+
+func (i *InterfaceMgr) checkChangedInner() ([]InterfaceInfo, bool) {
 	interfaces, err := GetInterfaces(i.cidr)
 	if err != nil {
 		return nil, false
